@@ -155,7 +155,7 @@ it is presumed that they default to:
       "type"
     ]
   },
-  "json-path": {
+  "json-pointer": {
     // a valid JSON path pointing to a value
     "type": "object",
     "properties": {
@@ -214,7 +214,7 @@ it is presumed that they default to:
         "$ref": "#/definitions/scope-mapping-tuple"
       },
       {
-        "$ref": "#/definitions/json-path"
+        "$ref": "#/definitions/json-pointer"
       }
     ]
   },
@@ -248,10 +248,10 @@ it is presumed that they default to:
         "type": "object",
         "properties": {
           "email": {
-            "$ref": "$.email"
+            "$ref": "#/email"
           },
           "name": {
-            "$ref": "$.name"
+            "$ref": "#/name"
           }
         }
       },

@@ -31,7 +31,7 @@ pub(crate) struct ScopeValueMapping {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct JsonPath;
+pub(crate) struct Pointer(jsonptr::Pointer);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -45,7 +45,7 @@ pub(crate) enum ScopeCompositeMapping {
     },
     Path {
         #[serde(rename = "$ref")]
-        ref_: JsonPath,
+        ref_: Pointer,
     },
 }
 
