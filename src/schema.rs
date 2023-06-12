@@ -1,12 +1,41 @@
+use std::ops::Deref;
+
 use error_stack::Result;
 use indexmap::IndexMap;
-use jsonschema::JSONSchema;
+use jsonptr::Token;
+use schemars::schema::{ObjectValidation, SchemaObject};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+const KEYWORD: &str = "indietyp/consent";
+
+#[derive(Debug)]
+struct ImplicitScopeCache(IndexMap<Scope, Vec<jsonptr::Pointer>>);
+
+impl ImplicitScopeCache {
+    fn new() -> Self {
+        Self(IndexMap::new())
+    }
+
+    fn get(&self, scope: &Scope) -> Option<&Vec<jsonptr::Pointer>> {
+        self.0.get(scope)
+    }
+
+    fn merge(&mut self, other: Self) {
+        for (scope, pointers) in other.0 {
+            self.0.entry(scope).or_default().extend(pointers);
+        }
+    }
+
+    fn insert(&mut self, scope: Scope, pointer: jsonptr::Pointer) {
+        self.0.entry(scope).or_default().push(pointer);
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct Cache {
-    implicit_scopes: IndexMap<Scope, Vec<jsonptr::Pointer>>,
+    implicit_scopes: ImplicitScopeCache,
 }
 
 // A claim is a resolved scope with a value.
@@ -61,17 +90,53 @@ pub(crate) struct ImplicitScope {
 }
 
 impl ImplicitScope {
-    fn find(&self, schema: &JSONSchema) -> Vec<jsonptr::Pointer> {
-        // Problem: we're currently unable to traverse the schema
-        // TODO: this won't work because of definitions and such, we would need to keep track where
-        // we are, then resolve that in the schema and figure out if we allow it or not.
-        todo!()
+    fn find_object(object: ObjectValidation, path: Vec<Token>) -> ImplicitScopeCache {
+        let mut pointers = ImplicitScopeCache::new();
+
+        for (key, value) in object.properties {
+            let mut path = path.clone();
+
+            path.push(Token::new(key));
+
+            pointers.merge(Self::find(value.into_object(), path));
+        }
+
+        pointers
+    }
+
+    // This is not ideal, ideally we'd go through the user object (with schema in hand) and evaluate
+    // the schema for every entry. However, this is a lot of work and we're not sure if it's worth
+    // for a PoC. (also: I didn't find a way to do this with any of the existing crates)
+    fn find(mut schema: SchemaObject, path: Vec<Token>) -> ImplicitScopeCache {
+        let mut pointers = ImplicitScopeCache::new();
+
+        if let Some(object) = schema.object {
+            pointers.merge(Self::find_object(*object, path.clone()));
+        }
+
+        if let Some(extension) = schema.extensions.remove(KEYWORD) {
+            let pointer = jsonptr::Pointer::new(path);
+
+            match serde_json::from_value::<TraitConfiguration>(extension.clone()) {
+                Ok(value) => {
+                    for scope in value.scopes {
+                        pointers.insert(scope, pointer.clone());
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        ?extension,
+                        "unable to deserialize trait configuration"
+                    );
+                }
+            }
+        }
+
+        pointers
     }
 
     fn resolve(&self, scope: &Scope, user: &Value, cache: &Cache) -> IncompleteClaim {
-        // go through the schema and find all the scopes that match
-        // then collect the values from the user
-
         let Some(pointers) = cache.implicit_scopes.get(scope) else {
             tracing::warn!("unable to find scope in cache");
 

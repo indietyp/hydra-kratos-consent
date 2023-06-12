@@ -60,6 +60,18 @@ Every property in the `traits` object can have an additional `indietyp/consent` 
 These are then configured in the top schema, if `DIRECT_MAPPING` is enabled, an entry will automatically be generated
 for every property in the `traits` object.
 
+##### Limitations
+
+Implicit configuration currently _only_ works in objects that are:
+
+1) directly embedded (we do not follow references)
+2) not conditional (we do not follow `if`/`then`/`else`)
+3) are either contained in another object or in the `traits` object
+
+This is due to the fact that internally we first resolve the schema into a list of json pointers, and then resolve those
+on the object. (contrary to json paths, which are not standardized, we do not allow for wildcards, this may change in
+the future)
+
 #### Consent Configuration
 
 Invalid configurations will be ignored on consent, but will emit a warning. You can check the validity of your schema
