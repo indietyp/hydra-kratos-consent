@@ -1,12 +1,23 @@
-use axum::response::Redirect;
+use std::{net::SocketAddr, sync::Arc};
+
+use axum::{response::Redirect, routing::get, Json, Server};
 use error_stack::{IntoReport, Report, Result, ResultExt};
 use ory_hydra_client::models::{
     AcceptOAuth2ConsentRequest, AcceptOAuth2ConsentRequestSession, OAuth2ConsentSession,
 };
+use schemars::schema::{Schema, SchemaObject};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use url::Url;
 
-use crate::schema::{Cache, Configuration};
+use crate::{
+    schema::{Cache, Configuration, ImplicitScope},
+    validate::fetch,
+};
 
+type SharedState = Arc<State>;
+
+#[derive(Debug)]
 struct State {
     kratos: ory_kratos_client::apis::configuration::Configuration,
     hydra: ory_hydra_client::apis::configuration::Configuration,
@@ -22,6 +33,8 @@ enum Error {
     Kratos,
     #[error("request does not contain subject")]
     SubjectMissing,
+    #[error("unable to fetch schema from Kratos")]
+    IdentitySchema,
 }
 
 async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Error> {
@@ -73,4 +86,64 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
     .change_context(Error::Hydra)?;
 
     Ok(Redirect::to(&response.redirect_to))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ConsentQuery {
+    consent_challenge: String,
+}
+
+async fn consent(
+    axum::extract::State(state): axum::extract::State<SharedState>,
+    query: axum::extract::Query<ConsentQuery>,
+) -> core::result::Result<Redirect, Json<Report<Error>>> {
+    handle_consent(&state, &query.consent_challenge)
+        .await
+        .map_err(Json)
+}
+
+struct Config {
+    kratos_url: Url,
+    kratos_schema_id: String,
+
+    hydra_url: Url,
+}
+
+async fn setup(config: Config) -> Result<State, Error> {
+    let kratos = ory_kratos_client::apis::configuration::Configuration {
+        base_path: config.kratos_url.to_string(),
+        ..Default::default()
+    };
+
+    let hydra = ory_hydra_client::apis::configuration::Configuration {
+        base_path: config.hydra_url.to_string(),
+        ..Default::default()
+    };
+
+    let (cache, config) = fetch(&kratos, &config.kratos_schema_id)
+        .await
+        .change_context(Error::IdentitySchema)?;
+
+    Ok(State {
+        kratos,
+        hydra,
+        cache,
+        config,
+    })
+}
+
+async fn run(config: Config, address: SocketAddr) -> Result<(), Error> {
+    let state = setup(config).await?;
+    let state = Arc::new(state);
+
+    let router = axum::Router::new()
+        .route("/consent", get(consent))
+        .with_state(state);
+
+    Server::bind(&address)
+        .serve(router.into_make_service())
+        .await
+        .expect("should run forever-ish");
+
+    Ok(())
 }

@@ -3,7 +3,7 @@ use std::ops::Deref;
 use error_stack::Result;
 use indexmap::IndexMap;
 use jsonptr::Token;
-use schemars::schema::{ObjectValidation, SchemaObject};
+use schemars::schema::{ObjectValidation, Schema, SchemaObject};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -11,7 +11,7 @@ use thiserror::Error;
 const KEYWORD: &str = "indietyp/consent";
 
 #[derive(Debug)]
-struct ImplicitScopeCache(IndexMap<Scope, Vec<jsonptr::Pointer>>);
+pub(crate) struct ImplicitScopeCache(IndexMap<Scope, Vec<jsonptr::Pointer>>);
 
 impl ImplicitScopeCache {
     fn new() -> Self {
@@ -36,6 +36,12 @@ impl ImplicitScopeCache {
 #[derive(Debug)]
 pub(crate) struct Cache {
     implicit_scopes: ImplicitScopeCache,
+}
+
+impl Cache {
+    pub(crate) fn new(implicit_scopes: ImplicitScopeCache) -> Self {
+        Self { implicit_scopes }
+    }
 }
 
 pub(crate) struct Claims {
@@ -112,7 +118,7 @@ impl ImplicitScope {
     // This is not ideal, ideally we'd go through the user object (with schema in hand) and evaluate
     // the schema for every entry. However, this is a lot of work and we're not sure if it's worth
     // for a PoC. (also: I didn't find a way to do this with any of the existing crates)
-    fn find(mut schema: SchemaObject, path: Vec<Token>) -> ImplicitScopeCache {
+    pub(crate) fn find(mut schema: SchemaObject, path: Vec<Token>) -> ImplicitScopeCache {
         let mut pointers = ImplicitScopeCache::new();
 
         if let Some(object) = schema.object {
@@ -141,7 +147,7 @@ impl ImplicitScope {
         pointers
     }
 
-    fn resolve(&self, scope: &Scope, traits: &Value, cache: &Cache) -> IncompleteClaim {
+    fn resolve<'a>(&'a self, scope: &Scope, traits: &Value, cache: &Cache) -> IncompleteClaim<'a> {
         let Some(pointers) = cache.implicit_scopes.get(scope) else {
             tracing::warn!("unable to find scope in cache");
 
@@ -242,7 +248,7 @@ pub(crate) struct ExplicitScope {
 }
 
 impl ExplicitScope {
-    fn resolve(&self, scope: &Scope, traits: &Value) -> IncompleteClaim {
+    fn resolve<'a>(&'a self, scope: &Scope, traits: &Value) -> IncompleteClaim<'a> {
         let value = self.mapping.resolve(scope, traits);
 
         IncompleteClaim {
@@ -269,7 +275,12 @@ impl Configuration {
         self.scopes.get(scope)
     }
 
-    pub(crate) fn resolve(&self, scope: &Scope, traits: &Value, cache: &Cache) -> Option<Claim> {
+    pub(crate) fn resolve<'a>(
+        &'a self,
+        scope: &'a Scope,
+        traits: &Value,
+        cache: &Cache,
+    ) -> Option<Claim<'a>> {
         let mapping = self.find_scope(scope)?;
 
         let claim = match mapping {
@@ -278,7 +289,7 @@ impl Configuration {
         }
         .complete(scope);
 
-        claim
+        Some(claim)
     }
 
     pub(crate) fn resolve_all(&self, traits: &Value, cache: &Cache) -> Claims {
@@ -316,5 +327,21 @@ impl Configuration {
             id_token: Value::Object(id_token),
             access_token: Value::Object(access_token),
         }
+    }
+
+    pub(crate) fn from_root(mut value: SchemaObject) -> Self {
+        let Some(value) = value.extensions.remove(KEYWORD) else {
+            tracing::warn!("unable to find {KEYWORD} in identity schema");
+
+            return Self {
+                scopes: IndexMap::new(),
+            };
+        };
+
+        let configuration = serde_json::from_value::<Self>(value).ok()?;
+
+        // TODO: direct mapping
+
+        configuration
     }
 }
