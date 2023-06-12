@@ -70,7 +70,7 @@ it is presumed that they default to:
 
 ```json
 {
-  "type": "value",
+  "type": "implicit",
   "sessionData": {
     "idToken": "<name of the scope>",
     "accessToken": "<name of the scope>"
@@ -122,19 +122,19 @@ it is presumed that they default to:
   "scopes": {
     "$oneOf": [
       {
-        "$ref": "#/definitions/scope-value"
+        "$ref": "#/definitions/scope-implicit"
       },
       {
-        "$ref": "#/definitions/scope-complex"
+        "$ref": "#/definitions/scope-explicit"
       }
     ]
   },
-  "scope-value": {
+  "scope-implicit": {
     "type": "object",
     "properties": {
       "type": {
         "type": "string",
-        "const": "value"
+        "const": "implicit"
       },
       "collect": {
         "type": "string",
@@ -218,12 +218,12 @@ it is presumed that they default to:
       }
     ]
   },
-  "scope-complex": {
+  "scope-explicit": {
     "type": "object",
     "properties": {
       "type": {
         "type": "string",
-        "const": "complex"
+        "const": "explicit"
       },
       "mapping": {
         "$ref": "#/definitions/scope-mapping"
@@ -243,7 +243,7 @@ it is presumed that they default to:
   /* "traits": ... */
   "indietyp/consent": {
     "mapping": {
-      "type": "complex",
+      "type": "explicit",
       "mapping": {
         "type": "object",
         "properties": {
@@ -263,3 +263,7 @@ it is presumed that they default to:
   }
 }
 ```
+
+## Future Possibilities
+
+- [ ] Support for remote content
