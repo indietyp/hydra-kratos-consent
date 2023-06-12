@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use jsonptr::Token;
 use schemars::schema::{ObjectValidation, SchemaObject};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use thiserror::Error;
 
 const KEYWORD: &str = "indietyp/consent";
@@ -36,6 +36,11 @@ impl ImplicitScopeCache {
 #[derive(Debug)]
 pub(crate) struct Cache {
     implicit_scopes: ImplicitScopeCache,
+}
+
+pub(crate) struct Claims {
+    pub(crate) id_token: Value,
+    pub(crate) access_token: Value,
 }
 
 // A claim is a resolved scope with a value.
@@ -136,7 +141,7 @@ impl ImplicitScope {
         pointers
     }
 
-    fn resolve(&self, scope: &Scope, user: &Value, cache: &Cache) -> IncompleteClaim {
+    fn resolve(&self, scope: &Scope, traits: &Value, cache: &Cache) -> IncompleteClaim {
         let Some(pointers) = cache.implicit_scopes.get(scope) else {
             tracing::warn!("unable to find scope in cache");
 
@@ -149,7 +154,7 @@ impl ImplicitScope {
         let mut values = vec![];
 
         for pointer in pointers {
-            match pointer.resolve(user) {
+            match pointer.resolve(traits) {
                 Ok(value) => {
                     values.push(value);
                 }
@@ -237,8 +242,8 @@ pub(crate) struct ExplicitScope {
 }
 
 impl ExplicitScope {
-    fn resolve(&self, scope: &Scope, user: &Value) -> IncompleteClaim {
-        let value = self.mapping.resolve(scope, user);
+    fn resolve(&self, scope: &Scope, traits: &Value) -> IncompleteClaim {
+        let value = self.mapping.resolve(scope, traits);
 
         IncompleteClaim {
             value,
@@ -260,17 +265,56 @@ pub(crate) struct Configuration {
 }
 
 impl Configuration {
-    fn find_scope(&self, scope: &Scope) -> Option<&ScopeConfiguration> {
+    pub(crate) fn find_scope(&self, scope: &Scope) -> Option<&ScopeConfiguration> {
         self.scopes.get(scope)
     }
 
-    fn resolve(&self, scope: &Scope, user: &Value, cache: &Cache) -> Claim {
+    pub(crate) fn resolve(&self, scope: &Scope, traits: &Value, cache: &Cache) -> Option<Claim> {
         let mapping = self.find_scope(scope)?;
 
-        match mapping {
-            ScopeConfiguration::Implicit(implicit) => implicit.resolve(scope, user, cache),
-            ScopeConfiguration::Explicit(explicit) => explicit.resolve(scope, user),
+        let claim = match mapping {
+            ScopeConfiguration::Implicit(implicit) => implicit.resolve(scope, traits, cache),
+            ScopeConfiguration::Explicit(explicit) => explicit.resolve(scope, traits),
         }
-        .complete(scope)
+        .complete(scope);
+
+        claim
+    }
+
+    pub(crate) fn resolve_all(&self, traits: &Value, cache: &Cache) -> Claims {
+        let mut claims = vec![];
+
+        for scope in self.scopes.keys() {
+            if let Some(claim) = self.resolve(scope, traits, cache) {
+                claims.push(claim);
+            }
+        }
+
+        let id_token = claims
+            .iter()
+            .filter_map(|claim| {
+                claim
+                    .session_data
+                    .id_token
+                    .clone()
+                    .map(|id_token| (id_token, claim.value.clone()))
+            })
+            .collect();
+
+        let access_token = claims
+            .into_iter()
+            .filter_map(|claim| {
+                claim
+                    .session_data
+                    .access_token
+                    .clone()
+                    .map(|access_token| (access_token, claim.value))
+            })
+            .collect();
+
+        Claims {
+            id_token: Value::Object(id_token),
+            access_token: Value::Object(access_token),
+        }
     }
 }
