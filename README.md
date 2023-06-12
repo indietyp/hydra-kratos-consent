@@ -125,7 +125,7 @@ it is presumed that they default to:
         "$ref": "#/definitions/scope-value"
       },
       {
-        "$ref": "#/definitions/scope-composite"
+        "$ref": "#/definitions/scope-complex"
       }
     ]
   },
@@ -218,12 +218,12 @@ it is presumed that they default to:
       }
     ]
   },
-  "scope-composite": {
+  "scope-complex": {
     "type": "object",
     "properties": {
       "type": {
         "type": "string",
-        "const": "composite"
+        "const": "complex"
       },
       "mapping": {
         "$ref": "#/definitions/scope-mapping"
@@ -243,7 +243,7 @@ it is presumed that they default to:
   /* "traits": ... */
   "indietyp/consent": {
     "mapping": {
-      "type": "composite",
+      "type": "complex",
       "mapping": {
         "type": "object",
         "properties": {

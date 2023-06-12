@@ -35,13 +35,13 @@ pub(crate) struct Pointer(jsonptr::Pointer);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub(crate) enum ScopeCompositeMapping {
+pub(crate) enum ScopeComplexMapping {
     Object {
-        properties: IndexMap<String, ScopeCompositeMapping>,
+        properties: IndexMap<String, ScopeComplexMapping>,
     },
     Tuple {
         #[serde(rename = "prefixItems")]
-        items: Vec<ScopeCompositeMapping>,
+        items: Vec<ScopeComplexMapping>,
     },
     Path {
         #[serde(rename = "$ref")]
@@ -53,7 +53,7 @@ pub(crate) enum ScopeCompositeMapping {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub(crate) enum ScopeMapping {
     Value(ScopeValueMapping),
-    Composite(ScopeCompositeMapping),
+    Complex(ScopeComplexMapping),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
