@@ -2,10 +2,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use axum::{response::Redirect, routing::get, Json, Server};
 use error_stack::{IntoReport, Report, Result, ResultExt};
-use ory_hydra_client::models::{
-    AcceptOAuth2ConsentRequest, AcceptOAuth2ConsentRequestSession, OAuth2ConsentSession,
-};
-use schemars::schema::{Schema, SchemaObject};
+use ory_hydra_client::models::{AcceptOAuth2ConsentRequest, AcceptOAuth2ConsentRequestSession};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
@@ -26,7 +23,7 @@ struct State {
 }
 
 #[derive(Debug, Copy, Clone, Error)]
-enum Error {
+pub(crate) enum Error {
     #[error("API error to Hydra")]
     Hydra,
     #[error("API error to Kratos")]
@@ -102,11 +99,14 @@ async fn consent(
         .map_err(Json)
 }
 
-struct Config {
-    kratos_url: Url,
-    kratos_schema_id: String,
+#[derive(Debug)]
+pub(crate) struct Config {
+    pub(crate) kratos_url: Url,
+    pub(crate) kratos_schema_id: String,
 
-    hydra_url: Url,
+    pub(crate) hydra_url: Url,
+
+    pub(crate) direct_mapping: bool,
 }
 
 async fn setup(config: Config) -> Result<State, Error> {
@@ -120,7 +120,7 @@ async fn setup(config: Config) -> Result<State, Error> {
         ..Default::default()
     };
 
-    let (cache, config) = fetch(&kratos, &config.kratos_schema_id)
+    let (cache, config) = fetch(&kratos, &config.kratos_schema_id, config.direct_mapping)
         .await
         .change_context(Error::IdentitySchema)?;
 
@@ -132,7 +132,7 @@ async fn setup(config: Config) -> Result<State, Error> {
     })
 }
 
-async fn run(config: Config, address: SocketAddr) -> Result<(), Error> {
+pub(crate) async fn run(address: SocketAddr, config: Config) -> Result<(), Error> {
     let state = setup(config).await?;
     let state = Arc::new(state);
 

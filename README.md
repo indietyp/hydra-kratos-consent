@@ -72,6 +72,13 @@ This is due to the fact that internally we first resolve the schema into a list 
 on the object. (contrary to json paths, which are not standardized, we do not allow for wildcards, this may change in
 the future)
 
+##### Direct Mapping
+
+If `DIRECT_MAPPING` is enabled, then for the first level of the `traits` object, an implicit scope will be generated for
+every property.
+
+If a `scope` with the same name has already been declared, then it will be used instead.
+
 #### Consent Configuration
 
 Invalid configurations will be ignored on consent, but will emit a warning. You can check the validity of your schema

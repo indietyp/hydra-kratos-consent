@@ -271,6 +271,12 @@ pub(crate) struct Configuration {
 }
 
 impl Configuration {
+    fn empty() -> Self {
+        Self {
+            scopes: IndexMap::new(),
+        }
+    }
+
     pub(crate) fn find_scope(&self, scope: &Scope) -> Option<&ScopeConfiguration> {
         self.scopes.get(scope)
     }
@@ -329,18 +335,72 @@ impl Configuration {
         }
     }
 
-    pub(crate) fn from_root(mut value: SchemaObject) -> Self {
-        let Some(value) = value.extensions.remove(KEYWORD) else {
-            tracing::warn!("unable to find {KEYWORD} in identity schema");
+    // search for all scopes that are not explicitly defined and create an implicit mapping for them
+    // we do not overwrite existing mappings
+    fn insert_implicit_mapping(&mut self, cache: &Cache) {
+        // we have already gathered all scopes that have been defined (through the cache), diff
+        // which ones are missing.
 
-            return Self {
-                scopes: IndexMap::new(),
-            };
+        for scope in cache.implicit_scopes.0.keys() {
+            if self.scopes.contains_key(scope) {
+                continue;
+            }
+
+            let mapping = ScopeConfiguration::Implicit(ImplicitScope {
+                collect: Collect::First,
+                session_data: SessionData {
+                    id_token: Some(scope.0.clone()),
+                    access_token: Some(scope.0.clone()),
+                },
+            });
+
+            self.scopes.insert(scope.clone(), mapping);
+        }
+    }
+
+    // direct mappings are automatic mappings for the first level of the object
+    // we do not overwrite existing mappings
+    fn insert_direct_mapping(&mut self, value: &SchemaObject) {
+        let Some(object) = &value.object else {
+            return;
         };
 
-        let configuration = serde_json::from_value::<Self>(value).ok()?;
+        for key in object.properties.keys() {
+            let scope = Scope(key.clone());
 
-        // TODO: direct mapping
+            if self.scopes.contains_key(&scope) {
+                continue;
+            }
+
+            let mapping = ScopeConfiguration::Implicit(ImplicitScope {
+                collect: Collect::First,
+                session_data: SessionData {
+                    id_token: Some(key.clone()),
+                    access_token: Some(key.clone()),
+                },
+            });
+
+            self.scopes.insert(scope, mapping);
+        }
+    }
+
+    pub(crate) fn from_root(mut schema: SchemaObject, cache: &Cache, direct_mapping: bool) -> Self {
+        let Some(value) = schema.extensions.remove(KEYWORD) else {
+            tracing::warn!("unable to find {KEYWORD} in identity schema");
+
+            return Self::empty();
+        };
+
+        let Ok(mut configuration) = serde_json::from_value::<Self>(value) else {
+            tracing::warn!("unable to deserialize {KEYWORD} in identity schema");
+
+            return Self::empty();
+        };
+
+        configuration.insert_implicit_mapping(cache);
+        if direct_mapping {
+            configuration.insert_direct_mapping(&schema);
+        }
 
         configuration
     }
