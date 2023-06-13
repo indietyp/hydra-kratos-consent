@@ -53,7 +53,10 @@ pub(crate) async fn run(schema: String, config: Config) -> Result<(), Error> {
         ..Default::default()
     };
 
+    println!("config: {config:#?}");
     let (_, config) = fetch(&kratos, &config.keyword, &schema, config.direct_mapping).await?;
+    println!("config: {config:#?}");
+
     let config = serde_value::to_value(config)
         .into_report()
         .change_context(Error::Kratos)?;
