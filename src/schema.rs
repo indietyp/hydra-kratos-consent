@@ -12,6 +12,10 @@ use crate::cache::{ImplicitScopeCache, ScopeCache};
 pub(crate) struct Scope(String);
 
 impl Scope {
+    pub(crate) fn new(value: String) -> Self {
+        Self(value)
+    }
+
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
@@ -284,10 +288,19 @@ impl ScopeConfig {
         Some(claim)
     }
 
-    pub(crate) fn resolve_all(&self, traits: &Value, cache: &ScopeCache) -> Claims {
+    pub(crate) fn resolve_all(
+        &self,
+        traits: &Value,
+        cache: &ScopeCache,
+        requested: &[Scope],
+    ) -> Claims {
         let mut claims = vec![];
 
         for scope in self.scopes.keys() {
+            if !requested.contains(scope) {
+                continue;
+            }
+
             if let Some(claim) = self.resolve(scope, traits, cache) {
                 claims.push(claim);
             }

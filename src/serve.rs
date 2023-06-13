@@ -8,7 +8,10 @@ use thiserror::Error;
 use tower_http::trace::TraceLayer;
 use url::Url;
 
-use crate::cache::{SchemaCache, SchemaId};
+use crate::{
+    cache::{SchemaCache, SchemaId},
+    schema::Scope,
+};
 
 type SharedState = Arc<State>;
 
@@ -55,6 +58,13 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
         .fetch(&state.kratos, &SchemaId::new(identity.schema_id))
         .await
         .change_context(Error::IdentitySchema)?;
+
+    let scopes: Vec<_> = request
+        .requested_scope
+        .unwrap_or_default()
+        .into_iter()
+        .map(Scope::new)
+        .collect();
 
     let session = identity.traits.map(|traits| schema.resolve(&traits));
 

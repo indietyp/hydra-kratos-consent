@@ -70,8 +70,8 @@ pub(crate) struct Schema {
 }
 
 impl Schema {
-    pub(crate) fn resolve(&self, traits: &Value) -> Claims {
-        self.config.resolve_all(traits, &self.cache)
+    pub(crate) fn resolve(&self, traits: &Value, requested: &[Scope]) -> Claims {
+        self.config.resolve_all(traits, &self.cache, requested)
     }
 }
 
