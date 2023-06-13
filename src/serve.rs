@@ -42,6 +42,8 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
             .into_report()
             .change_context(Error::Hydra)?;
 
+    tracing::debug!(?request, "fetched consent request from hydra");
+
     // fetch all info from kratos
     let subject = request
         .subject
