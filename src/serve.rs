@@ -79,6 +79,8 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
         (None, None)
     };
 
+    tracing::debug!(?id_token, ?access_token, "resolved session");
+
     // we automatically skip consent, always
     let response = ory_hydra_client::apis::o_auth2_api::accept_o_auth2_consent_request(
         &state.hydra,
