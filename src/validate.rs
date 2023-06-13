@@ -35,9 +35,24 @@ pub(crate) async fn fetch(
         .into_report()
         .change_context(Error::Kratos)?;
 
-    let schema: SchemaObject = serde_json::from_value(identity_schema)
+    let traits = identity_schema
+        .get("properties")
+        .ok_or_else(|| {
+            tracing::error!("identity schema is malformed");
+            Error::IdentitySchemaMalformed
+        })?
+        .get("traits")
+        .ok_or_else(|| {
+            tracing::error!("identity schema is malformed");
+            Error::IdentitySchemaMalformed
+        })?
+        .clone();
+
+    let schema: SchemaObject = serde_json::from_value(traits)
         .into_report()
         .change_context(Error::IdentitySchemaMalformed)?;
+
+    tracing::debug!(?schema, "fetched schema from kratos");
 
     let cache = ImplicitScope::find(keyword, schema.clone(), vec![]);
     let cache = ScopeCache::new(cache);
@@ -53,9 +68,7 @@ pub(crate) async fn run(schema: String, config: Config) -> Result<(), Error> {
         ..Default::default()
     };
 
-    println!("config: {config:#?}");
     let (_, config) = fetch(&kratos, &config.keyword, &schema, config.direct_mapping).await?;
-    println!("config: {config:#?}");
 
     let config = serde_value::to_value(config)
         .into_report()
