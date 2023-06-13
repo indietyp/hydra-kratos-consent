@@ -287,3 +287,7 @@ it is presumed that they default to:
 ## Future Possibilities
 
 - [ ] Support for remote content
+
+## License
+
+Dual licensed under the [Apache 2.0](./LICENSE-APACHE) and [MIT](./LICENSE-MIT) licenses.
