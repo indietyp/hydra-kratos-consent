@@ -370,32 +370,36 @@ impl ScopeConfig {
         }
     }
 
-    pub(crate) fn from_root(
-        keyword: &str,
-        mut schema: SchemaObject,
-        cache: &ScopeCache,
-        direct_mapping: bool,
-    ) -> Self {
+    fn create(keyword: &str, schema: &mut SchemaObject) -> Self {
         let Some(value) = schema.extensions.remove(keyword) else {
             tracing::warn!("unable to find {keyword} in identity schema");
 
             return Self::empty();
         };
 
-        let mut configuration = match serde_json::from_value::<Self>(value) {
-            Ok(configuration) => configuration,
+        match serde_json::from_value::<Self>(value) {
+            Ok(this) => this,
             Err(error) => {
                 tracing::warn!(?error, "unable to deserialize {keyword} in identity schema");
 
-                return Self::empty();
+                Self::empty()
             }
-        };
+        }
+    }
 
-        configuration.insert_implicit_mapping(cache);
+    pub(crate) fn from_root(
+        keyword: &str,
+        mut schema: SchemaObject,
+        cache: &ScopeCache,
+        direct_mapping: bool,
+    ) -> Self {
+        let mut this = Self::create(keyword, &mut schema);
+
+        this.insert_implicit_mapping(cache);
         if direct_mapping {
-            configuration.insert_direct_mapping(&schema);
+            this.insert_direct_mapping(&schema);
         }
 
-        configuration
+        this
     }
 }
