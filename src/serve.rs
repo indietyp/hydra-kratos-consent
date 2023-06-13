@@ -53,6 +53,8 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
             .into_report()
             .change_context(Error::Kratos)?;
 
+    tracing::debug!(?identity, "fetched identity from kratos");
+
     let schema = state
         .cache
         .fetch(&state.kratos, &SchemaId::new(identity.schema_id))
