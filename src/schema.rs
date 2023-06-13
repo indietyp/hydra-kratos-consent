@@ -1,4 +1,7 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter},
+};
 
 use indexmap::IndexMap;
 use jsonptr::Token;
@@ -271,6 +274,7 @@ impl ScopeConfig {
         self.scopes.get(scope)
     }
 
+    #[tracing::instrument]
     pub(crate) fn resolve<'a>(
         &'a self,
         scope: &'a Scope,
@@ -280,19 +284,28 @@ impl ScopeConfig {
         let mapping = self.find_scope(scope)?;
 
         let claim = match mapping {
-            ScopeConfiguration::Implicit(implicit) => implicit.resolve(scope, traits, cache),
-            ScopeConfiguration::Explicit(explicit) => explicit.resolve(traits),
+            ScopeConfiguration::Implicit(implicit) => {
+                tracing::debug!(?scope, "resolving implicit scope");
+
+                implicit.resolve(scope, traits, cache)
+            }
+            ScopeConfiguration::Explicit(explicit) => {
+                tracing::debug!(?scope, "resolving explicit scope");
+
+                explicit.resolve(traits)
+            }
         }
         .complete(scope);
 
         Some(claim)
     }
 
+    #[tracing::instrument]
     pub(crate) fn resolve_all(
         &self,
         traits: &Value,
         cache: &ScopeCache,
-        requested: &[Scope],
+        requested: &HashSet<Scope>,
     ) -> Claims {
         let mut claims = vec![];
 
@@ -359,7 +372,7 @@ impl ScopeConfig {
 
     // direct mappings are automatic mappings for the first level of the object
     // we do not overwrite existing mappings
-    fn insert_direct_mapping(&mut self, value: &SchemaObject) {
+    fn insert_direct_mapping(&mut self, value: &SchemaObject, cache: &mut ScopeCache) {
         let Some(object) = &value.object else {
             return;
         };
@@ -379,7 +392,11 @@ impl ScopeConfig {
                 },
             });
 
-            self.scopes.insert(scope, mapping);
+            self.scopes.insert(scope.clone(), mapping);
+
+            cache
+                .implicit_scopes
+                .insert(scope, jsonptr::Pointer::from(Token::new(key)));
         }
     }
 
@@ -403,14 +420,14 @@ impl ScopeConfig {
     pub(crate) fn from_root(
         keyword: &str,
         mut schema: SchemaObject,
-        cache: &ScopeCache,
+        cache: &mut ScopeCache,
         direct_mapping: bool,
     ) -> Self {
         let mut this = Self::create(keyword, &mut schema);
 
         this.insert_implicit_mapping(cache);
         if direct_mapping {
-            this.insert_direct_mapping(&schema);
+            this.insert_direct_mapping(&schema, cache);
         }
 
         this

@@ -55,9 +55,9 @@ pub(crate) async fn fetch(
     tracing::debug!(?schema, "fetched schema from kratos");
 
     let cache = ImplicitScope::find(keyword, schema.clone(), vec![]);
-    let cache = ScopeCache::new(cache);
+    let mut cache = ScopeCache::new(cache);
 
-    let config = crate::schema::ScopeConfig::from_root(keyword, schema, &cache, direct_mapping);
+    let config = crate::schema::ScopeConfig::from_root(keyword, schema, &mut cache, direct_mapping);
 
     Ok((cache, config))
 }

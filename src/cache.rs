@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use error_stack::Result;
 use indexmap::IndexMap;
@@ -70,7 +70,7 @@ pub(crate) struct Schema {
 }
 
 impl Schema {
-    pub(crate) fn resolve(&self, traits: &Value, requested: &[Scope]) -> Claims {
+    pub(crate) fn resolve(&self, traits: &Value, requested: &HashSet<Scope>) -> Claims {
         self.config.resolve_all(traits, &self.cache, requested)
     }
 }

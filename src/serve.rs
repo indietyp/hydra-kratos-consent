@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 
 use axum::{response::Redirect, routing::get, Json, Server};
 use error_stack::{IntoReport, Report, Result, ResultExt};
@@ -59,14 +59,17 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
         .await
         .change_context(Error::IdentitySchema)?;
 
-    let scopes: Vec<_> = request
+    let scopes: HashSet<_> = request
         .requested_scope
+        .clone()
         .unwrap_or_default()
         .into_iter()
         .map(Scope::new)
         .collect();
 
-    let session = identity.traits.map(|traits| schema.resolve(&traits));
+    let session = identity
+        .traits
+        .map(|traits| schema.resolve(&traits, &scopes));
 
     let (id_token, access_token) = if let Some(session) = session {
         (Some(session.id_token), Some(session.access_token))
