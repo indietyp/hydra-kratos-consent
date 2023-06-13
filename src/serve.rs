@@ -5,6 +5,7 @@ use error_stack::{IntoReport, Report, Result, ResultExt};
 use ory_hydra_client::models::{AcceptOAuth2ConsentRequest, AcceptOAuth2ConsentRequestSession};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tower_http::trace::TraceLayer;
 use url::Url;
 
 use crate::cache::{SchemaCache, SchemaId};
@@ -136,7 +137,8 @@ pub(crate) async fn run(address: SocketAddr, config: Config) -> Result<(), Error
 
     let router = axum::Router::new()
         .route("/consent", get(consent))
-        .with_state(state);
+        .with_state(state)
+        .layer(TraceLayer::new_for_http());
 
     Server::bind(&address)
         .serve(router.into_make_service())
