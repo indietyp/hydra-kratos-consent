@@ -262,26 +262,27 @@ it is presumed that they default to:
 {
   /* "traits": ... */
   "indietyp/consent": {
-    "mapping": {
-      "type": "explicit",
-      "mapping": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "$ref": "#/email"
-          },
-          "name": {
-            "$ref": "#/name"
+    "scopes": {
+      "profile": {
+        "type": "explicit",
+        "mapping": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "$ref": "#/email"
+            },
+            "name": {
+              "$ref": "#/name"
+            }
           }
+        },
+        "sessionData": {
+          "idToken": "profile",
+          "accessToken": "profile"
         }
-      },
-      "sessionData": {
-        "idToken": "profile",
-        "accessToken": "profile"
       }
     }
   }
-}
 ```
 
 ## Future Possibilities
