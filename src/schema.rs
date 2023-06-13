@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use indexmap::IndexMap;
 use jsonptr::Token;
 use schemars::schema::{ObjectValidation, SchemaObject};
@@ -165,6 +167,12 @@ impl ImplicitScope {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Pointer(jsonptr::Pointer);
+
+impl Display for Pointer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]

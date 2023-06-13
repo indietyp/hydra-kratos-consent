@@ -19,6 +19,11 @@ url = "2.4.0"
 clap = { version = "4.3.2", features = ['derive', 'env'] }
 tracing-subscriber = { version = "0.3.17", features = ['env-filter'] }
 tokio = { version = "1.28.2", features = ['full'] }
+tabled = "0.12.1"
+ron_to_table = "0.2.0"
+ron = "0.8.0"
+serde-value = "0.7.0"
+console = "0.15.7"
 
 ory-hydra-client = "2.1.1"
 ory-kratos-client = "0.13.1"

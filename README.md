@@ -304,6 +304,7 @@ it is presumed that they default to:
 ## Future Possibilities
 
 - [ ] Support for remote content
+- [ ] Configurable consent screen
 
 ## License
 

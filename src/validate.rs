@@ -1,6 +1,13 @@
+use std::io::Write;
+
+use console::Term;
 use error_stack::{IntoReport, Result, ResultExt};
 use ory_kratos_client::apis::configuration::Configuration;
+use ron_to_table::RonTable;
 use schemars::schema::SchemaObject;
+use serde::Deserialize;
+use serde_value::Value;
+use tabled::settings::Style;
 use thiserror::Error;
 
 use crate::{cache::ScopeCache, schema::ImplicitScope, serve::Config};
@@ -11,6 +18,10 @@ pub(crate) enum Error {
     Kratos,
     #[error("schema is malformed")]
     IdentitySchemaMalformed,
+    #[error("unable to deserialize schema")]
+    Serde,
+    #[error("unable to write to stdout")]
+    Io,
 }
 
 pub(crate) async fn fetch(
@@ -44,9 +55,23 @@ pub(crate) async fn run(schema: String, config: Config) -> Result<(), Error> {
     };
 
     let (_, config) = fetch(&kratos, &config.keyword, &schema, config.direct_mapping).await?;
+    let config = serde_value::to_value(config)
+        .into_report()
+        .change_context(Error::Kratos)?;
 
-    // TODO: beautify output
-    println!("{config:#?}");
+    let config: ron::Value = ron::Value::deserialize(config)
+        .into_report()
+        .change_context(Error::Serde)?;
+
+    let table = RonTable::new()
+        .collapse()
+        .with(Style::rounded())
+        .build(&config);
+
+    let mut term = Term::stdout();
+    term.write_all(table.as_bytes())
+        .into_report()
+        .change_context(Error::Io)?;
 
     Ok(())
 }
