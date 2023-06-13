@@ -110,28 +110,28 @@ pub(crate) struct Config {
     pub(crate) keyword: String,
 }
 
-fn setup(config: Config) -> Result<State, Error> {
+fn setup(config: Config) -> State {
     let kratos = ory_kratos_client::apis::configuration::Configuration {
-        base_path: config.kratos_url.to_string(),
+        base_path: config.kratos_url.as_str().trim_end_matches('/').to_owned(),
         ..Default::default()
     };
 
     let hydra = ory_hydra_client::apis::configuration::Configuration {
-        base_path: config.hydra_url.to_string(),
+        base_path: config.hydra_url.as_str().trim_end_matches('/').to_owned(),
         ..Default::default()
     };
 
     let cache = SchemaCache::new(config.keyword, config.direct_mapping);
 
-    Ok(State {
+    State {
         kratos,
         hydra,
         cache,
-    })
+    }
 }
 
 pub(crate) async fn run(address: SocketAddr, config: Config) -> Result<(), Error> {
-    let state = setup(config)?;
+    let state = setup(config);
     let state = Arc::new(state);
 
     let router = axum::Router::new()

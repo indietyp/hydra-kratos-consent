@@ -6,7 +6,6 @@ use ory_kratos_client::apis::configuration::Configuration;
 use ron_to_table::RonTable;
 use schemars::schema::SchemaObject;
 use serde::Deserialize;
-use serde_value::Value;
 use tabled::settings::Style;
 use thiserror::Error;
 
@@ -31,7 +30,7 @@ pub(crate) async fn fetch(
     direct_mapping: bool,
 ) -> Result<(ScopeCache, crate::schema::ScopeConfig), Error> {
     // fetch the identity schema from kratos
-    let identity_schema = ory_kratos_client::apis::identity_api::get_identity_schema(&config, &id)
+    let identity_schema = ory_kratos_client::apis::identity_api::get_identity_schema(config, id)
         .await
         .into_report()
         .change_context(Error::Kratos)?;
@@ -50,7 +49,7 @@ pub(crate) async fn fetch(
 
 pub(crate) async fn run(schema: String, config: Config) -> Result<(), Error> {
     let kratos = Configuration {
-        base_path: config.kratos_url.to_string(),
+        base_path: config.kratos_url.as_str().trim_end_matches('/').to_owned(),
         ..Default::default()
     };
 
