@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use clap::{Parser, Subcommand};
 use error_stack::{Result, ResultExt};
 use thiserror::Error;
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use crate::serve::Config;
@@ -43,6 +44,11 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    tracing_subscriber::fmt()
+        .pretty()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     let cli = Args::parse();
 
     let config = Config {

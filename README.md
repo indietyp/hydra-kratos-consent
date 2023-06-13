@@ -25,6 +25,7 @@ The following environment variables are supported:
 | `BASE_URL`         | The base URL of the server (without `/consent`), used for redirects | `http://<host>:<port>` |
 | `DIRECT_MAPPING`   | Whether to enable direct mappings                                   | `false`                |
 | `SKIP_CONSENT`     | Whether to skip consent, currently no way to disable                | `true`                 |
+| `KEYWORD`          | The keyword used for the trait config                               | `indietyp/consent`     |
 | `RUST_LOG`         | The log level                                                       | `info`                 |
 
 ### Configuration in Identity Schema

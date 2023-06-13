@@ -17,6 +17,7 @@ tracing = "0.1.37"
 schemars = "0.8.12"
 url = "2.4.0"
 clap = { version = "4.3.2", features = ['derive', 'env'] }
+tracing-subscriber = { version = "0.3.17", features = ['env-filter'] }
 tokio = { version = "1.28.2", features = ['full'] }
 
 ory-hydra-client = "2.1.1"
