@@ -80,6 +80,21 @@ every property.
 
 If a `scope` with the same name has already been declared, then it will be used instead.
 
+
+##### Example
+
+```json5
+{
+  /* type declaration */
+  "indietyp/consent": {
+    "scopes": [
+      "profile",
+      "email"
+    ]
+  },
+}
+```
+
 #### Consent Configuration
 
 Invalid configurations will be ignored on consent, but will emit a warning. You can check the validity of your schema
