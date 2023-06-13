@@ -7,10 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
-use crate::{
-    schema::{Cache, Configuration, ImplicitScope},
-    validate::fetch,
-};
+use crate::cache::{SchemaCache, SchemaId};
 
 type SharedState = Arc<State>;
 
@@ -18,8 +15,8 @@ type SharedState = Arc<State>;
 struct State {
     kratos: ory_kratos_client::apis::configuration::Configuration,
     hydra: ory_hydra_client::apis::configuration::Configuration,
-    cache: Cache,
-    config: Configuration,
+
+    cache: SchemaCache,
 }
 
 #[derive(Debug, Copy, Clone, Error)]
@@ -52,9 +49,13 @@ async fn handle_consent(state: &State, challenge: &str) -> Result<Redirect, Erro
             .into_report()
             .change_context(Error::Kratos)?;
 
-    let session = identity
-        .traits
-        .map(|traits| state.config.resolve_all(&traits, &state.cache));
+    let schema = state
+        .cache
+        .fetch(&state.kratos, &SchemaId::new(identity.schema_id))
+        .await
+        .change_context(Error::IdentitySchema)?;
+
+    let session = identity.traits.map(|traits| schema.resolve(&traits));
 
     let (id_token, access_token) = if let Some(session) = session {
         (Some(session.id_token), Some(session.access_token))
@@ -102,14 +103,14 @@ async fn consent(
 #[derive(Debug)]
 pub(crate) struct Config {
     pub(crate) kratos_url: Url,
-    pub(crate) kratos_schema_id: String,
 
     pub(crate) hydra_url: Url,
 
     pub(crate) direct_mapping: bool,
+    pub(crate) keyword: String,
 }
 
-async fn setup(config: Config) -> Result<State, Error> {
+fn setup(config: Config) -> Result<State, Error> {
     let kratos = ory_kratos_client::apis::configuration::Configuration {
         base_path: config.kratos_url.to_string(),
         ..Default::default()
@@ -120,20 +121,17 @@ async fn setup(config: Config) -> Result<State, Error> {
         ..Default::default()
     };
 
-    let (cache, config) = fetch(&kratos, &config.kratos_schema_id, config.direct_mapping)
-        .await
-        .change_context(Error::IdentitySchema)?;
+    let cache = SchemaCache::new(config.keyword, config.direct_mapping);
 
     Ok(State {
         kratos,
         hydra,
         cache,
-        config,
     })
 }
 
 pub(crate) async fn run(address: SocketAddr, config: Config) -> Result<(), Error> {
-    let state = setup(config).await?;
+    let state = setup(config)?;
     let state = Arc::new(state);
 
     let router = axum::Router::new()

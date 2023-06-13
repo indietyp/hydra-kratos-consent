@@ -3,10 +3,7 @@ use ory_kratos_client::apis::configuration::Configuration;
 use schemars::schema::SchemaObject;
 use thiserror::Error;
 
-use crate::{
-    schema::{Cache, ImplicitScope},
-    serve::Config,
-};
+use crate::{cache::ScopeCache, schema::ImplicitScope, serve::Config};
 
 #[derive(Debug, Error)]
 pub(crate) enum Error {
@@ -18,9 +15,10 @@ pub(crate) enum Error {
 
 pub(crate) async fn fetch(
     config: &Configuration,
+    keyword: &str,
     id: &str,
     direct_mapping: bool,
-) -> Result<(Cache, crate::schema::Configuration), Error> {
+) -> Result<(ScopeCache, crate::schema::ScopeConfig), Error> {
     // fetch the identity schema from kratos
     let identity_schema = ory_kratos_client::apis::identity_api::get_identity_schema(&config, &id)
         .await
@@ -31,14 +29,24 @@ pub(crate) async fn fetch(
         .into_report()
         .change_context(Error::IdentitySchemaMalformed)?;
 
-    let cache = ImplicitScope::find(schema.clone(), vec![]);
-    let cache = Cache::new(cache);
+    let cache = ImplicitScope::find(keyword, schema.clone(), vec![]);
+    let cache = ScopeCache::new(cache);
 
-    let config = crate::schema::Configuration::from_root(schema, &cache, direct_mapping);
+    let config = crate::schema::ScopeConfig::from_root(keyword, schema, &cache, direct_mapping);
 
     Ok((cache, config))
 }
 
-pub(crate) async fn run(config: Config) -> Result<(), Error> {
-    todo!()
+pub(crate) async fn run(schema: String, config: Config) -> Result<(), Error> {
+    let kratos = Configuration {
+        base_path: config.kratos_url.to_string(),
+        ..Default::default()
+    };
+
+    let (_, config) = fetch(&kratos, &config.keyword, &schema, config.direct_mapping).await?;
+
+    // TODO: beautify output
+    println!("{config:#?}");
+
+    Ok(())
 }

@@ -1,46 +1,17 @@
-use std::ops::Deref;
-
-use error_stack::Result;
 use indexmap::IndexMap;
 use jsonptr::Token;
-use schemars::schema::{ObjectValidation, Schema, SchemaObject};
+use schemars::schema::{ObjectValidation, SchemaObject};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-use thiserror::Error;
+use serde_json::Value;
 
-const KEYWORD: &str = "indietyp/consent";
+use crate::cache::{ImplicitScopeCache, ScopeCache};
 
-#[derive(Debug)]
-pub(crate) struct ImplicitScopeCache(IndexMap<Scope, Vec<jsonptr::Pointer>>);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub(crate) struct Scope(String);
 
-impl ImplicitScopeCache {
-    fn new() -> Self {
-        Self(IndexMap::new())
-    }
-
-    fn get(&self, scope: &Scope) -> Option<&Vec<jsonptr::Pointer>> {
-        self.0.get(scope)
-    }
-
-    fn merge(&mut self, other: Self) {
-        for (scope, pointers) in other.0 {
-            self.0.entry(scope).or_default().extend(pointers);
-        }
-    }
-
-    fn insert(&mut self, scope: Scope, pointer: jsonptr::Pointer) {
-        self.0.entry(scope).or_default().push(pointer);
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct Cache {
-    implicit_scopes: ImplicitScopeCache,
-}
-
-impl Cache {
-    pub(crate) fn new(implicit_scopes: ImplicitScopeCache) -> Self {
-        Self { implicit_scopes }
+impl Scope {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -62,6 +33,7 @@ struct IncompleteClaim<'a> {
 }
 
 impl<'a> IncompleteClaim<'a> {
+    #[allow(clippy::missing_const_for_fn)] // Reason: false positive
     fn complete(self, scope: &'a Scope) -> Claim<'a> {
         Claim {
             scope,
@@ -76,9 +48,6 @@ pub(crate) struct SessionData {
     pub(crate) id_token: Option<String>,
     pub(crate) access_token: Option<String>,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub(crate) struct Scope(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub(crate) struct TraitConfiguration {
@@ -101,15 +70,15 @@ pub(crate) struct ImplicitScope {
 }
 
 impl ImplicitScope {
-    fn find_object(object: ObjectValidation, path: Vec<Token>) -> ImplicitScopeCache {
+    fn find_object(keyword: &str, object: ObjectValidation, path: &[Token]) -> ImplicitScopeCache {
         let mut pointers = ImplicitScopeCache::new();
 
         for (key, value) in object.properties {
-            let mut path = path.clone();
+            let mut path = path.to_vec();
 
             path.push(Token::new(key));
 
-            pointers.merge(Self::find(value.into_object(), path));
+            pointers.merge(Self::find(keyword, value.into_object(), path));
         }
 
         pointers
@@ -118,14 +87,18 @@ impl ImplicitScope {
     // This is not ideal, ideally we'd go through the user object (with schema in hand) and evaluate
     // the schema for every entry. However, this is a lot of work and we're not sure if it's worth
     // for a PoC. (also: I didn't find a way to do this with any of the existing crates)
-    pub(crate) fn find(mut schema: SchemaObject, path: Vec<Token>) -> ImplicitScopeCache {
+    pub(crate) fn find(
+        keyword: &str,
+        mut schema: SchemaObject,
+        path: Vec<Token>,
+    ) -> ImplicitScopeCache {
         let mut pointers = ImplicitScopeCache::new();
 
         if let Some(object) = schema.object {
-            pointers.merge(Self::find_object(*object, path.clone()));
+            pointers.merge(Self::find_object(keyword, *object, &path));
         }
 
-        if let Some(extension) = schema.extensions.remove(KEYWORD) {
+        if let Some(extension) = schema.extensions.remove(keyword) {
             let pointer = jsonptr::Pointer::new(path);
 
             match serde_json::from_value::<TraitConfiguration>(extension.clone()) {
@@ -147,7 +120,12 @@ impl ImplicitScope {
         pointers
     }
 
-    fn resolve<'a>(&'a self, scope: &Scope, traits: &Value, cache: &Cache) -> IncompleteClaim<'a> {
+    fn resolve<'a>(
+        &'a self,
+        scope: &Scope,
+        traits: &Value,
+        cache: &ScopeCache,
+    ) -> IncompleteClaim<'a> {
         let Some(pointers) = cache.implicit_scopes.get(scope) else {
             tracing::warn!("unable to find scope in cache");
 
@@ -205,27 +183,27 @@ pub(crate) enum ScopeExplicitMapping {
 }
 
 impl ScopeExplicitMapping {
-    fn resolve(&self, scope: &Scope, value: &Value) -> Value {
+    fn resolve(&self, value: &Value) -> Value {
         match self {
-            ScopeExplicitMapping::Object { properties } => {
+            Self::Object { properties } => {
                 let mut object = serde_json::Map::new();
 
                 for (key, mapping) in properties {
-                    object.insert(key.clone(), mapping.resolve(scope, value));
+                    object.insert(key.clone(), mapping.resolve(value));
                 }
 
                 Value::Object(object)
             }
-            ScopeExplicitMapping::Tuple { items } => {
+            Self::Tuple { items } => {
                 let mut array = Vec::with_capacity(items.len());
 
                 for mapping in items {
-                    array.push(mapping.resolve(scope, value));
+                    array.push(mapping.resolve(value));
                 }
 
                 Value::Array(array)
             }
-            ScopeExplicitMapping::Path { ref_ } => {
+            Self::Path { ref_ } => {
                 let pointer = &ref_.0;
 
                 match pointer.resolve(value) {
@@ -248,8 +226,8 @@ pub(crate) struct ExplicitScope {
 }
 
 impl ExplicitScope {
-    fn resolve<'a>(&'a self, scope: &Scope, traits: &Value) -> IncompleteClaim<'a> {
-        let value = self.mapping.resolve(scope, traits);
+    fn resolve(&self, traits: &Value) -> IncompleteClaim {
+        let value = self.mapping.resolve(traits);
 
         IncompleteClaim {
             value,
@@ -266,11 +244,11 @@ pub(crate) enum ScopeConfiguration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Configuration {
+pub(crate) struct ScopeConfig {
     pub(crate) scopes: IndexMap<Scope, ScopeConfiguration>,
 }
 
-impl Configuration {
+impl ScopeConfig {
     fn empty() -> Self {
         Self {
             scopes: IndexMap::new(),
@@ -285,20 +263,20 @@ impl Configuration {
         &'a self,
         scope: &'a Scope,
         traits: &Value,
-        cache: &Cache,
+        cache: &ScopeCache,
     ) -> Option<Claim<'a>> {
         let mapping = self.find_scope(scope)?;
 
         let claim = match mapping {
             ScopeConfiguration::Implicit(implicit) => implicit.resolve(scope, traits, cache),
-            ScopeConfiguration::Explicit(explicit) => explicit.resolve(scope, traits),
+            ScopeConfiguration::Explicit(explicit) => explicit.resolve(traits),
         }
         .complete(scope);
 
         Some(claim)
     }
 
-    pub(crate) fn resolve_all(&self, traits: &Value, cache: &Cache) -> Claims {
+    pub(crate) fn resolve_all(&self, traits: &Value, cache: &ScopeCache) -> Claims {
         let mut claims = vec![];
 
         for scope in self.scopes.keys() {
@@ -337,11 +315,11 @@ impl Configuration {
 
     // search for all scopes that are not explicitly defined and create an implicit mapping for them
     // we do not overwrite existing mappings
-    fn insert_implicit_mapping(&mut self, cache: &Cache) {
+    fn insert_implicit_mapping(&mut self, cache: &ScopeCache) {
         // we have already gathered all scopes that have been defined (through the cache), diff
         // which ones are missing.
 
-        for scope in cache.implicit_scopes.0.keys() {
+        for scope in cache.implicit_scopes.keys() {
             if self.scopes.contains_key(scope) {
                 continue;
             }
@@ -349,8 +327,8 @@ impl Configuration {
             let mapping = ScopeConfiguration::Implicit(ImplicitScope {
                 collect: Collect::First,
                 session_data: SessionData {
-                    id_token: Some(scope.0.clone()),
-                    access_token: Some(scope.0.clone()),
+                    id_token: Some(scope.as_str().to_owned()),
+                    access_token: Some(scope.as_str().to_owned()),
                 },
             });
 
@@ -384,17 +362,25 @@ impl Configuration {
         }
     }
 
-    pub(crate) fn from_root(mut schema: SchemaObject, cache: &Cache, direct_mapping: bool) -> Self {
-        let Some(value) = schema.extensions.remove(KEYWORD) else {
-            tracing::warn!("unable to find {KEYWORD} in identity schema");
+    pub(crate) fn from_root(
+        keyword: &str,
+        mut schema: SchemaObject,
+        cache: &ScopeCache,
+        direct_mapping: bool,
+    ) -> Self {
+        let Some(value) = schema.extensions.remove(keyword) else {
+            tracing::warn!("unable to find {keyword} in identity schema");
 
             return Self::empty();
         };
 
-        let Ok(mut configuration) = serde_json::from_value::<Self>(value) else {
-            tracing::warn!("unable to deserialize {KEYWORD} in identity schema");
+        let mut configuration = match serde_json::from_value::<Self>(value) {
+            Ok(configuration) => configuration,
+            Err(error) => {
+                tracing::warn!(?error, "unable to deserialize {keyword} in identity schema");
 
-            return Self::empty();
+                return Self::empty();
+            }
         };
 
         configuration.insert_implicit_mapping(cache);
