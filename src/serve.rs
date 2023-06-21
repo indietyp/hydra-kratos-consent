@@ -120,6 +120,47 @@ async fn consent(
         .map_err(Json)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct LogoutQuery {
+    logout_challenge: String,
+}
+
+async fn logout(
+    axum::extract::State(state): axum::extract::State<SharedState>,
+    query: axum::extract::Query<LogoutQuery>,
+) -> core::result::Result<Redirect, Json<Report<Error>>> {
+    // for now, we just accept the logout request, in the future we might want to also enable asking
+    // the user
+    let request = ory_hydra_client::apis::o_auth2_api::get_o_auth2_logout_request(
+        &state.hydra,
+        &query.logout_challenge,
+    )
+    .await
+    .into_report()
+    .change_context(Error::Hydra)
+    .map_err(Json)?;
+
+    // TODO: unsure if sid or subject
+    if let Some(sid) = request.sid {
+        ory_kratos_client::apis::identity_api::delete_identity_sessions(&state.kratos, &sid)
+            .await
+            .into_report()
+            .change_context(Error::Kratos)
+            .map_err(Json)?;
+    };
+
+    let response = ory_hydra_client::apis::o_auth2_api::accept_o_auth2_logout_request(
+        &state.hydra,
+        &query.logout_challenge,
+    )
+    .await
+    .into_report()
+    .change_context(Error::Hydra)
+    .map_err(Json)?;
+
+    Ok(Redirect::to(&response.redirect_to))
+}
+
 #[derive(Debug)]
 pub(crate) struct Config {
     pub(crate) kratos_url: Url,

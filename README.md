@@ -25,6 +25,7 @@ The following environment variables are supported:
 | `BASE_URL`         | The base URL of the server (without `/consent`), used for redirects | `http://<host>:<port>` |
 | `DIRECT_MAPPING`   | Whether to enable direct mappings                                   | `false`                |
 | `SKIP_CONSENT`     | Whether to skip consent, currently no way to disable                | `true`                 |
+| `SKIP_LOGOUT`      | Whether to skip logout, currently no way to disable                 | `true`                 |
 | `KEYWORD`          | The keyword used for the trait config                               | `indietyp/consent`     |
 | `RUST_LOG`         | The log level                                                       | `info`                 |
 
@@ -79,7 +80,6 @@ If `DIRECT_MAPPING` is enabled, then for the first level of the `traits` object,
 every property.
 
 If a `scope` with the same name has already been declared, then it will be used instead.
-
 
 ##### Example
 
@@ -305,6 +305,7 @@ it is presumed that they default to:
 
 - [ ] Support for remote content
 - [ ] Configurable consent screen
+- [ ] Configurable logout screen
 
 ## License
 
