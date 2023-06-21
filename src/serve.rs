@@ -197,6 +197,7 @@ pub(crate) async fn run(address: SocketAddr, config: Config) -> Result<(), Error
 
     let router = axum::Router::new()
         .route("/consent", get(consent))
+        .route("/logout", get(logout))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 
